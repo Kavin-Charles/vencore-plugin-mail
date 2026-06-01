@@ -5,7 +5,7 @@ import { createGmailProvider } from '../lib/gmail-provider';
 import { createImapProvider } from '../lib/imap-provider';
 import type { FetchedEmail, MailProvider } from '../lib/mail-provider';
 // logger provided by host
-import { logActivity } from '@vantage/api/lib/log-activity';
+import { logActivity } from '../lib/log-activity';
 import { mailNotifier } from '../lib/mail-notifier';
 
 export function buildProvider(

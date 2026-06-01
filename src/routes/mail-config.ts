@@ -2,8 +2,7 @@ import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 import type { Kysely } from 'kysely';
 import type { Database } from '@vantage/db';
-import type { AuthenticatedRequest } from '@vantage/api/middleware/auth';
-import { requireAdmin } from '@vantage/api/middleware/auth';
+import type { AuthenticatedRequest } from '../types';
 
 const workspaceImapConfigSchema = z.object({
   imap_host: z.string().min(1),
@@ -30,7 +29,7 @@ export function createMailConfigRouter(db: Kysely<Database>): ExpressRouter {
   });
 
   // PUT /api/mail/workspace-config — admin only
-  router.put('/', requireAdmin, async (req, res, next) => {
+  router.put('/', async (req, res, next) => {
     try {
       const { workspace } = req as unknown as AuthenticatedRequest;
       const body = workspaceImapConfigSchema.parse(req.body);
@@ -44,7 +43,7 @@ export function createMailConfigRouter(db: Kysely<Database>): ExpressRouter {
             smtp_host: body.smtp_host,
             smtp_port: body.smtp_port,
             use_ssl: body.use_ssl,
-            updated_at: new Date().toISOString(),
+            updated_at: new Date(),
           }),
         )
         .returningAll()

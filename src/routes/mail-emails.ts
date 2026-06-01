@@ -2,13 +2,13 @@ import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 import type { Kysely } from 'kysely';
 import type { Database, EmailAccount } from '@vantage/db';
-import type { AuthenticatedRequest } from '@vantage/api/middleware/auth';
+import type { AuthenticatedRequest } from '../types';
 import { decryptSecret } from '../lib/mail-crypto';
 import { createGmailProvider } from '../lib/gmail-provider';
 import { createImapProvider } from '../lib/imap-provider';
 import type { MailProvider } from '../lib/mail-provider';
 // logger provided by host
-import { logActivity } from '@vantage/api/lib/log-activity';
+import { logActivity } from '../lib/log-activity';
 import { mailNotifier } from '../lib/mail-notifier';
 
 export const listQuerySchema = z.object({
