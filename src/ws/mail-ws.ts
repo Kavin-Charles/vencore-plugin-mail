@@ -1,11 +1,11 @@
 // apps/api/src/ws/mail-ws.ts
 // WebSocket handler for real-time mail delivery.
-// Auth via 'vantage_token' cookie (same pattern as ssh-terminal.ts).
+// Auth via 'vencore_token' cookie (same pattern as ssh-terminal.ts).
 import type { IncomingMessage } from 'http';
 import jwt from 'jsonwebtoken';
 import type { WebSocket } from 'ws';
 import type { Kysely } from 'kysely';
-import type { Database } from '@vantage/db';
+import type { Database } from '@vencore/db';
 import { mailNotifier } from '../lib/mail-notifier';
 // logger provided by host
 
@@ -34,7 +34,7 @@ export async function handleMailWsUpgrade(
   // Also accept ?token= query param — browser can't send custom headers on WS, and
   // SameSite=Strict blocks cross-origin cookies (e.g. vercel.app → railway.app).
   const urlParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
-  const token = cookies['vantage_token'] ?? urlParams.get('token') ?? '';
+  const token = cookies['vencore_token'] ?? urlParams.get('token') ?? '';
 
   if (!token) {
     ws.close(4001, 'Unauthorized');

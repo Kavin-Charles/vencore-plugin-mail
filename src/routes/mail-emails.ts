@@ -1,7 +1,7 @@
 import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 import type { Kysely } from 'kysely';
-import type { Database, EmailAccount } from '@vantage/db';
+import type { Database, EmailAccount } from '@vencore/db';
 import type { AuthenticatedRequest } from '../types';
 import { decryptSecret } from '../lib/mail-crypto';
 import { createGmailProvider } from '../lib/gmail-provider';

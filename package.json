@@ -1,5 +1,5 @@
 {
-  "name": "@vantage/plugin-mail",
+  "name": "@vencore/plugin-mail",
   "version": "1.0.0",
   "private": true,
   "main": "./src/index.ts",
@@ -10,8 +10,8 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@vantage/db": "workspace:*",
-    "@vantage/plugin-types": "workspace:*",
+    "@vencore/db": "workspace:*",
+    "@vencore/plugin-types": "workspace:*",
     "express": "^4.19.0",
     "jsonwebtoken": "^9.0.3",
     "googleapis": "^171.4.0",

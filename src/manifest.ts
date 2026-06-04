@@ -1,7 +1,7 @@
-import type { PluginManifest } from '@vantage/plugin-types';
+import type { PluginManifest } from '@vencore/plugin-types';
 
 export const manifest: PluginManifest = {
-  id: 'com.vantage.mail',
+  id: 'com.vencore.mail',
   name: 'Mail',
   version: '1.0.0',
   description: 'Gmail and IMAP email integration. Syncs emails, links to contacts and deals.',
