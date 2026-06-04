@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { google } from 'googleapis';
 import jwt from 'jsonwebtoken';
 import type { Kysely } from 'kysely';
-import type { Database } from '@vantage/db';
+import type { Database } from '@vencore/db';
 import type { AuthenticatedRequest } from '../types';
 import { encryptSecret, decryptSecret } from '../lib/mail-crypto';
 import { runFullSync, runIncrementalSync } from '../workers/mail-sync';

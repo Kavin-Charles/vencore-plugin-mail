@@ -1,6 +1,6 @@
 import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
-import type { Database } from '@vantage/db';
+import type { Database } from '@vencore/db';
 import { runIncrementalSync } from '../workers/mail-sync';
 // logger provided by host
 

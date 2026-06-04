@@ -1,5 +1,5 @@
 import type { Kysely } from 'kysely';
-import type { Database, EmailAccount } from '@vantage/db';
+import type { Database, EmailAccount } from '@vencore/db';
 import { decryptSecret, encryptSecret } from '../lib/mail-crypto';
 import { createGmailProvider } from '../lib/gmail-provider';
 import { createImapProvider } from '../lib/imap-provider';
