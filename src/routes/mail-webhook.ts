@@ -1,35 +1,36 @@
 import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
-import type { Database } from '@vencore/db';
+import type { Database } from '../types';
 import { runIncrementalSync } from '../workers/mail-sync';
 // logger provided by host
 
-export function createMailWebhookRouter(
-  db: Kysely<Database>,
-  pubsubToken: string,
-): ExpressRouter {
-  const router = Router();
+import type { VencoreBackendAPI } from '@vencore/plugin-types';
+import { getGlobalDb } from '../lib/global-db';
 
-  // POST /api/mail/webhook/gmail
+export function registerMailWebhookEndpoints(
+  vencore: VencoreBackendAPI,
+  pubsubToken: string,
+) {
+  // POST /webhook/gmail
   // Called by Google Pub/Sub push subscription.
-  router.post('/gmail', async (req, res) => {
+  (vencore.http as any).onEndpoint('/webhook/gmail', async (req: any) => {
     const incomingToken = req.headers['x-goog-channel-token'];
     if (!incomingToken || incomingToken !== pubsubToken) {
-      res.status(401).end();
-      return;
+      return { status: 401, body: '' };
     }
 
     try {
-      // Pub/Sub message data is base64-encoded JSON
-      const raw = req.body?.message?.data;
-      if (!raw) { res.status(204).end(); return; }
+      const db = getGlobalDb();
+      const body = req.body ? JSON.parse(req.body) : {};
+      const raw = body?.message?.data;
+      if (!raw) { return { status: 204, body: '' }; }
 
       const payload = JSON.parse(Buffer.from(raw as string, 'base64').toString('utf8')) as {
         emailAddress?: string;
       };
 
       const emailAddress = payload.emailAddress;
-      if (!emailAddress) { res.status(204).end(); return; }
+      if (!emailAddress) { return { status: 204, body: '' }; }
 
       const account = await db
         .selectFrom('email_accounts')
@@ -45,8 +46,6 @@ export function createMailWebhookRouter(
       console.error({ err }, 'mail-webhook: failed to process Gmail push');
     }
 
-    res.status(204).end();
+    return { status: 204, body: '' };
   });
-
-  return router;
 }

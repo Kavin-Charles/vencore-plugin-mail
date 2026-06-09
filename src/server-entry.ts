@@ -1,11 +1,7 @@
 import { Router, type Response } from 'express';
 import type { Kysely } from 'kysely';
-import type { Database } from '@vencore/db';
-import { createMailAccountsRouter } from './routes/mail-accounts';
-import { createMailEmailsRouter } from './routes/mail-emails';
-import { createMailBodyRouter } from './routes/mail-body';
-import { createMailConfigRouter } from './routes/mail-config';
-import { createMailWebhookRouter } from './routes/mail-webhook';
+import type { Database } from './types';
+import { setGlobalDb } from './lib/global-db';
 
 function serveUi(res: Response) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -121,11 +117,7 @@ window.parent.postMessage({ type: 'PLUGIN_READY' }, '*');
 
 export function createRouter(db: Kysely<Database>) {
   const router = Router();
+  setGlobalDb(db); // Save db instance for use in vencore HTTP endpoints
   router.get('/ui', (_req, res) => serveUi(res));
-  router.use('/accounts', createMailAccountsRouter(db));
-  router.use('/emails',   createMailEmailsRouter(db));
-  router.use('/body',     createMailBodyRouter(db));
-  router.use('/config',   createMailConfigRouter(db));
-  router.use('/webhook',  createMailWebhookRouter(db));
   return router;
 }

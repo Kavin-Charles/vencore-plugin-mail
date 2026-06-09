@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { google } from 'googleapis';
 import jwt from 'jsonwebtoken';
 import type { Kysely } from 'kysely';
-import type { Database } from '@vencore/db';
+import type { Database } from '../types';
 import type { AuthenticatedRequest } from '../types';
 import { encryptSecret, decryptSecret } from '../lib/mail-crypto';
 import { runFullSync, runIncrementalSync } from '../workers/mail-sync';
@@ -51,30 +51,34 @@ function makeOAuth2() {
   );
 }
 
-export function createMailAccountsRouter(db: Kysely<Database>): ExpressRouter {
-  const router = Router();
+import type { VencoreBackendAPI } from '@vencore/plugin-types';
+import { getGlobalDb } from '../lib/global-db';
 
-  // GET /api/mail/accounts
-  router.get('/', async (req, res, next) => {
+export function registerMailAccountsEndpoints(vencore: VencoreBackendAPI) {
+  // GET /accounts
+  (vencore.http as any).onEndpoint('/accounts', async () => {
     try {
-      const { user } = req as unknown as AuthenticatedRequest;
+      const user = await vencore.user.get();
+      const db = getGlobalDb();
       const accounts = await db
         .selectFrom('email_accounts')
         .where('user_id', '=', user.id)
         .select(['id', 'provider', 'email', 'display_name', 'sync_status', 'sync_error', 'last_synced_at', 'created_at'])
         .orderBy('created_at', 'asc')
         .execute();
-      res.json({ data: accounts, error: null });
-    } catch (err) { next(err); }
+      return { status: 200, body: JSON.stringify({ data: accounts, error: null }) };
+    } catch (err) {
+      console.error(err);
+      return { status: 500, body: JSON.stringify({ data: null, error: { message: 'Internal Server Error' } }) };
+    }
   });
 
-  // POST /api/mail/accounts/gmail/auth-url
-  router.post('/gmail/auth-url', async (req, res, next) => {
+  // POST /accounts/gmail/auth-url
+  (vencore.http as any).onEndpoint('/accounts/gmail/auth-url', async () => {
     try {
-      const { user } = req as unknown as AuthenticatedRequest;
+      const user = await vencore.user.get();
       if (!process.env['GOOGLE_CLIENT_ID']) {
-        res.status(503).json({ data: null, error: { code: 'NOT_CONFIGURED', message: 'Gmail OAuth not configured' } });
-        return;
+        return { status: 503, body: JSON.stringify({ data: null, error: { code: 'NOT_CONFIGURED', message: 'Gmail OAuth not configured' } }) };
       }
       const state = jwt.sign({ userId: user.id }, process.env['JWT_SECRET']!, { expiresIn: '10m' });
       const url = makeOAuth2().generateAuthUrl({
@@ -83,33 +87,30 @@ export function createMailAccountsRouter(db: Kysely<Database>): ExpressRouter {
         state,
         prompt: 'consent',
       });
-      res.json({ data: { url }, error: null });
-    } catch (err) { next(err); }
+      return { status: 200, body: JSON.stringify({ data: { url }, error: null }) };
+    } catch (err) {
+      console.error(err);
+      return { status: 500, body: JSON.stringify({ data: null, error: { message: 'Internal Server Error' } }) };
+    }
   });
 
-  // POST /api/mail/accounts/imap/test
-  router.post('/imap/test', async (req, res, next) => {
-    const { workspace } = req as unknown as AuthenticatedRequest;
-    let body: { email: string; imap_pass: string };
+  // POST /accounts/imap/test
+  (vencore.http as any).onEndpoint('/accounts/imap/test', async (req: any) => {
     try {
-      body = z.object({
+      const workspace = await vencore.workspace.get();
+      const db = getGlobalDb();
+      const body = z.object({
         email: z.string().email(),
         imap_pass: z.string().min(1),
-      }).parse(req.body);
-    } catch (err) {
-      next(err);
-      return;
-    }
+      }).parse(req.body ? JSON.parse(req.body) : {});
 
-    try {
       const config = await db
         .selectFrom('workspace_imap_config')
         .where('workspace_id', '=', workspace.id)
         .selectAll()
         .executeTakeFirst();
       if (!config) {
-        res.status(400).json({ data: null, error: { code: 'NO_WORKSPACE_CONFIG', message: 'Workspace mail server not configured' } });
-        return;
+        return { status: 400, body: JSON.stringify({ data: null, error: { code: 'NO_WORKSPACE_CONFIG', message: 'Workspace mail server not configured' } }) };
       }
 
       const client = new ImapFlow({
@@ -134,27 +135,28 @@ export function createMailAccountsRouter(db: Kysely<Database>): ExpressRouter {
           }),
         ]);
         clearTimeout(timeoutId);
-        res.json({ data: { ok: true }, error: null });
+        return { status: 200, body: JSON.stringify({ data: { ok: true }, error: null }) };
       } catch (err) {
         clearTimeout(timeoutId);
         try { client.close(); } catch { /* already closed */ }
         const raw = err instanceof Error ? err.message : 'Connection failed';
         const message = sanitizeImapError(raw);
-        res.status(400).json({ data: null, error: { code: 'IMAP_TEST_FAILED', message } });
-        return;
+        return { status: 400, body: JSON.stringify({ data: null, error: { code: 'IMAP_TEST_FAILED', message } }) };
       }
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'Connection failed';
       const message = sanitizeImapError(raw);
-      res.status(400).json({ data: null, error: { code: 'IMAP_TEST_FAILED', message } });
+      return { status: 400, body: JSON.stringify({ data: null, error: { code: 'IMAP_TEST_FAILED', message } }) };
     }
   });
 
-  // POST /api/mail/accounts/imap
-  router.post('/imap', async (req, res, next) => {
+  // POST /accounts/imap
+  (vencore.http as any).onEndpoint('/accounts/imap', async (req: any) => {
     try {
-      const { workspace, user } = req as unknown as AuthenticatedRequest;
-      const body = connectImapSchema.parse(req.body);
+      const workspace = await vencore.workspace.get();
+      const user = await vencore.user.get();
+      const db = getGlobalDb();
+      const body = connectImapSchema.parse(req.body ? JSON.parse(req.body) : {});
 
       let imapHost = body.imap_host;
       let imapPort = body.imap_port;
@@ -169,8 +171,7 @@ export function createMailAccountsRouter(db: Kysely<Database>): ExpressRouter {
           .selectAll()
           .executeTakeFirst();
         if (!wsConfig) {
-          res.status(400).json({ data: null, error: { code: 'NO_WORKSPACE_CONFIG', message: 'Workspace mail server not configured' } });
-          return;
+          return { status: 400, body: JSON.stringify({ data: null, error: { code: 'NO_WORKSPACE_CONFIG', message: 'Workspace mail server not configured' } }) };
         }
         imapHost = imapHost ?? wsConfig.imap_host;
         imapPort = imapPort ?? wsConfig.imap_port;
@@ -202,14 +203,18 @@ export function createMailAccountsRouter(db: Kysely<Database>): ExpressRouter {
         .executeTakeFirstOrThrow();
       const { imap_pass: _ip, smtp_pass: _sp, access_token: _at, refresh_token: _rt, ...safe } = account;
       void runFullSync(db, account.id);
-      res.status(201).json({ data: safe, error: null });
-    } catch (err) { next(err); }
+      return { status: 201, body: JSON.stringify({ data: safe, error: null }) };
+    } catch (err) {
+      console.error(err);
+      return { status: 500, body: JSON.stringify({ data: null, error: { message: 'Internal Server Error' } }) };
+    }
   });
 
-  // POST /api/mail/accounts/:id/sync
-  router.post('/:id/sync', async (req, res, next) => {
+  // POST /accounts/:id/sync
+  (vencore.http as any).onEndpoint('/accounts/:id/sync', async (req: any) => {
     try {
-      const { user } = req as unknown as AuthenticatedRequest;
+      const user = await vencore.user.get();
+      const db = getGlobalDb();
       const account = await db
         .selectFrom('email_accounts')
         .where('id', '=', req.params['id']!)
@@ -217,18 +222,22 @@ export function createMailAccountsRouter(db: Kysely<Database>): ExpressRouter {
         .select('id')
         .executeTakeFirst();
       if (!account) {
-        res.status(404).json({ data: null, error: { code: 'NOT_FOUND', message: 'Account not found' } });
-        return;
+        return { status: 404, body: JSON.stringify({ data: null, error: { code: 'NOT_FOUND', message: 'Account not found' } }) };
       }
       void runIncrementalSync(db, account.id);
-      res.json({ data: { queued: true }, error: null });
-    } catch (err) { next(err); }
+      return { status: 200, body: JSON.stringify({ data: { queued: true }, error: null }) };
+    } catch (err) {
+      console.error(err);
+      return { status: 500, body: JSON.stringify({ data: null, error: { message: 'Internal Server Error' } }) };
+    }
   });
 
-  // DELETE /api/mail/accounts/:id
-  router.delete('/:id', async (req, res, next) => {
+  // DELETE /accounts/:id
+  (vencore.http as any).onEndpoint('/accounts/:id', async (req: any) => {
+    if (req.method !== 'DELETE') return { status: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
     try {
-      const { user } = req as unknown as AuthenticatedRequest;
+      const user = await vencore.user.get();
+      const db = getGlobalDb();
       const account = await db
         .selectFrom('email_accounts')
         .where('id', '=', req.params['id']!)
@@ -236,15 +245,15 @@ export function createMailAccountsRouter(db: Kysely<Database>): ExpressRouter {
         .select('id')
         .executeTakeFirst();
       if (!account) {
-        res.status(404).json({ data: null, error: { code: 'NOT_FOUND', message: 'Account not found' } });
-        return;
+        return { status: 404, body: JSON.stringify({ data: null, error: { code: 'NOT_FOUND', message: 'Account not found' } }) };
       }
       await db.deleteFrom('email_accounts').where('id', '=', account.id).execute();
-      res.json({ data: { deleted: true }, error: null });
-    } catch (err) { next(err); }
+      return { status: 200, body: JSON.stringify({ data: { deleted: true }, error: null }) };
+    } catch (err) {
+      console.error(err);
+      return { status: 500, body: JSON.stringify({ data: null, error: { message: 'Internal Server Error' } }) };
+    }
   });
-
-  return router;
 }
 
 /**

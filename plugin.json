@@ -1,0 +1,56 @@
+{
+  "id": "com.vencore.mail",
+  "name": "Mail",
+  "version": "1.0.0",
+  "description": "Gmail and IMAP email integration. Syncs emails, links to contacts and deals.",
+  "data_access": [
+    "contacts:read",
+    "deals:read",
+    "activity:write"
+  ],
+  "endpoints": [
+    "/accounts",
+    "/accounts/gmail/auth-url",
+    "/accounts/imap/test",
+    "/accounts/imap",
+    "/accounts/:id/sync",
+    "/accounts/:id",
+    "/emails",
+    "/emails/:id",
+    "/emails/send",
+    "/body",
+    "/config",
+    "/webhook"
+  ],
+  "tables": [],
+  "migrations": [
+    {
+      "version": "1.0.0",
+      "up": "\n        CREATE TABLE IF NOT EXISTS email_accounts (\n          id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n          workspace_id    UUID NOT NULL,\n          user_id         UUID NOT NULL,\n          provider        VARCHAR NOT NULL,\n          email           VARCHAR NOT NULL,\n          display_name    VARCHAR,\n          access_token    TEXT,\n          refresh_token   TEXT,\n          imap_host       VARCHAR,\n          imap_port       INTEGER,\n          imap_user       VARCHAR,\n          imap_pass       TEXT,\n          smtp_host       VARCHAR,\n          smtp_port       INTEGER,\n          smtp_user       VARCHAR,\n          smtp_pass       TEXT,\n          use_ssl         BOOLEAN NOT NULL DEFAULT true,\n          sync_status     VARCHAR NOT NULL DEFAULT 'idle',\n          sync_error      TEXT,\n          last_synced_at  TIMESTAMPTZ,\n          gmail_history_id VARCHAR,\n          gmail_watch_expiry TIMESTAMPTZ,\n          created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),\n          updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),\n          UNIQUE (workspace_id, user_id, email)\n        );\n\n        CREATE TABLE IF NOT EXISTS emails (\n          id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n          account_id      UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,\n          workspace_id    UUID NOT NULL,\n          user_id         UUID NOT NULL,\n          message_id      VARCHAR NOT NULL,\n          thread_id       VARCHAR,\n          subject         TEXT,\n          from_address    VARCHAR NOT NULL,\n          from_name       VARCHAR,\n          to_addresses    TEXT[] NOT NULL DEFAULT '{}',\n          cc_addresses    TEXT[] NOT NULL DEFAULT '{}',\n          bcc_addresses   TEXT[] NOT NULL DEFAULT '{}',\n          snippet         TEXT,\n          folder          VARCHAR NOT NULL DEFAULT 'INBOX',\n          is_read         BOOLEAN NOT NULL DEFAULT false,\n          is_starred      BOOLEAN NOT NULL DEFAULT false,\n          sent_at         TIMESTAMPTZ NOT NULL,\n          contact_id      UUID,\n          deal_id         UUID,\n          created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),\n          UNIQUE (account_id, message_id)\n        );\n\n        CREATE INDEX IF NOT EXISTS emails_workspace_id_idx\n          ON emails (workspace_id, sent_at DESC);\n        CREATE INDEX IF NOT EXISTS emails_contact_id_idx\n          ON emails (contact_id) WHERE contact_id IS NOT NULL;\n        CREATE INDEX IF NOT EXISTS emails_deal_id_idx\n          ON emails (deal_id) WHERE deal_id IS NOT NULL;\n      ",
+      "down": "\n        DROP TABLE IF EXISTS emails;\n        DROP TABLE IF EXISTS email_accounts;\n      "
+    }
+  ],
+  "build": {
+    "client": "./dist/client.mjs",
+    "server": "./dist/index.js"
+  },
+  "surfaces": {
+    "nav": [
+      {
+        "label": "Mail",
+        "path": "/mail",
+        "icon": "Mail",
+        "group": "crm"
+      }
+    ],
+    "pages": [
+      {
+        "path": "/mail",
+        "title": "Mail"
+      }
+    ]
+  },
+  "icon": "Mail",
+  "author": "Vencore",
+  "homepage": "https://vencore.com"
+}

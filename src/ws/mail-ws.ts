@@ -5,7 +5,7 @@ import type { IncomingMessage } from 'http';
 import jwt from 'jsonwebtoken';
 import type { WebSocket } from 'ws';
 import type { Kysely } from 'kysely';
-import type { Database } from '@vencore/db';
+import type { Database } from '../types';
 import { mailNotifier } from '../lib/mail-notifier';
 // logger provided by host
 
