@@ -12,7 +12,8 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "module": "CommonJS"
+    "module": "CommonJS",
+    "jsx": "react"
   },
   "include": ["src"]
 }
