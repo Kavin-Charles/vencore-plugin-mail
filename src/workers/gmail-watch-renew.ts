@@ -1,7 +1,7 @@
 // apps/api/src/workers/gmail-watch-renew.ts
 import { google } from 'googleapis';
 import type { Kysely } from 'kysely';
-import type { Database } from '@vencore/db';
+import type { Database } from '../types';
 import { decryptSecret } from '../lib/mail-crypto';
 // logger provided by host
 

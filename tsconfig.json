@@ -6,13 +6,14 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "module": "CommonJS"
+    "module": "CommonJS",
+    "jsx": "react"
   },
   "include": ["src"]
 }

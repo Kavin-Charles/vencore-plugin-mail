@@ -1,7 +1,7 @@
 import { Router, type Router as ExpressRouter } from 'express';
 import { z } from 'zod';
 import type { Kysely } from 'kysely';
-import type { Database, EmailAccount } from '@vencore/db';
+import type { Database, EmailAccount } from '../types';
 import type { AuthenticatedRequest } from '../types';
 import { decryptSecret } from '../lib/mail-crypto';
 import { createGmailProvider } from '../lib/gmail-provider';
@@ -59,16 +59,19 @@ function getProvider(account: EmailAccount): MailProvider {
   });
 }
 
-export function createMailEmailsRouter(db: Kysely<Database>): ExpressRouter {
-  const router = Router();
+import type { VencoreBackendAPI } from '@vencore/plugin-types';
+import { getGlobalDb } from '../lib/global-db';
 
-  // GET /api/mail/emails
-  router.get('/', async (req, res, next) => {
+export function registerMailEmailsEndpoints(vencore: VencoreBackendAPI) {
+  // GET /emails
+  (vencore.http as any).onEndpoint('/emails', async (req: any) => {
     try {
-      const { user } = req as unknown as AuthenticatedRequest;
+      const user = await vencore.user.get();
+      const workspace = await vencore.workspace.get();
+      const db = getGlobalDb();
       const q = listQuerySchema.parse(req.query);
 
-      let query = db.selectFrom('emails').where('workspace_id', '=', user.workspace_id);
+      let query = db.selectFrom('emails').where('workspace_id', '=', workspace.id);
       // Personal inbox: scope to current user only; deal/contact context: workspace-wide
       if (!q.deal_id && !q.contact_id) {
         query = query.where('user_id', '=', user.id);
@@ -96,74 +99,128 @@ export function createMailEmailsRouter(db: Kysely<Database>): ExpressRouter {
         .offset((q.page - 1) * q.per_page)
         .execute();
 
-      res.json({ data: emails, total: Number(countRow.count), page: q.page, per_page: q.per_page, error: null });
-    } catch (err) { next(err); }
+      return { status: 200, body: JSON.stringify({ data: emails, total: Number(countRow.count), page: q.page, per_page: q.per_page, error: null }) };
+    } catch (err) {
+      console.error(err);
+      return { status: 500, body: JSON.stringify({ data: null, error: { message: 'Internal Server Error' } }) };
+    }
   });
 
-  // GET /api/mail/emails/:id
-  router.get('/:id', async (req, res, next) => {
-    try {
-      const { user } = req as unknown as AuthenticatedRequest;
-      const email = await db
-        .selectFrom('emails')
-        .where('id', '=', req.params['id']!)
-        .where('user_id', '=', user.id)
-        .selectAll()
-        .executeTakeFirst();
-      if (!email) {
-        res.status(404).json({ data: null, error: { code: 'NOT_FOUND', message: 'Email not found' } });
-        return;
+  // GET /emails/:id
+  (vencore.http as any).onEndpoint('/emails/:id', async (req: any) => {
+    if (req.method === 'PATCH' || req.method === 'DELETE') return { status: 405, body: '' }; // handled by other matches (Wait, onEndpoint matches by path only? No, we should check method inside!)
+    // Actually, onEndpoint does NOT match method. The SDK passes req.method. So we need to handle multiple methods inside /emails/:id!
+    if (req.method === 'GET') {
+      try {
+        const user = await vencore.user.get();
+        const db = getGlobalDb();
+        const email = await db
+          .selectFrom('emails')
+          .where('id', '=', req.params['id']!)
+          .where('user_id', '=', user.id)
+          .selectAll()
+          .executeTakeFirst();
+        if (!email) {
+          return { status: 404, body: JSON.stringify({ data: null, error: { code: 'NOT_FOUND', message: 'Email not found' } }) };
+        }
+        return { status: 200, body: JSON.stringify({ data: email, error: null }) };
+      } catch (err) {
+        console.error(err);
+        return { status: 500, body: JSON.stringify({ data: null, error: { message: 'Internal Server Error' } }) };
       }
-      res.json({ data: email, error: null });
-    } catch (err) { next(err); }
-  });
+    }
 
-  // PATCH /api/mail/emails/:id
-  router.patch('/:id', async (req, res, next) => {
-    try {
-      const { user } = req as unknown as AuthenticatedRequest;
-      const body = patchSchema.parse(req.body);
+    if (req.method === 'PATCH') {
+      try {
+        const user = await vencore.user.get();
+        const db = getGlobalDb();
+        const body = patchSchema.parse(req.body ? JSON.parse(req.body) : {});
 
-      const email = await db
-        .selectFrom('emails')
-        .where('id', '=', req.params['id']!)
-        .where('user_id', '=', user.id)
-        .select(['id', 'account_id', 'message_id'])
-        .executeTakeFirst();
-      if (!email) {
-        res.status(404).json({ data: null, error: { code: 'NOT_FOUND', message: 'Email not found' } });
-        return;
+        const email = await db
+          .selectFrom('emails')
+          .where('id', '=', req.params['id']!)
+          .where('user_id', '=', user.id)
+          .select(['id', 'account_id', 'message_id'])
+          .executeTakeFirst();
+        if (!email) {
+          return { status: 404, body: JSON.stringify({ data: null, error: { code: 'NOT_FOUND', message: 'Email not found' } }) };
+        }
+
+        const updated = await db
+          .updateTable('emails')
+          .set(body)
+          .where('id', '=', email.id)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+
+        // Mirror to provider (fire-and-forget)
+        void (async () => {
+          try {
+            const account = await db
+              .selectFrom('email_accounts')
+              .where('id', '=', email.account_id)
+              .selectAll()
+              .executeTakeFirst();
+            if (!account) return;
+            await getProvider(account).updateEmail(email.message_id, body);
+          } catch (err) { console.error({ err }, 'mail: provider mirror failed'); }
+        })();
+
+        return { status: 200, body: JSON.stringify({ data: updated, error: null }) };
+      } catch (err) {
+        console.error(err);
+        return { status: 500, body: JSON.stringify({ data: null, error: { message: 'Internal Server Error' } }) };
       }
+    }
 
-      const updated = await db
-        .updateTable('emails')
-        .set(body)
-        .where('id', '=', email.id)
-        .returningAll()
-        .executeTakeFirstOrThrow();
+    if (req.method === 'DELETE') {
+      try {
+        const user = await vencore.user.get();
+        const db = getGlobalDb();
+        const email = await db
+          .selectFrom('emails')
+          .where('id', '=', req.params['id']!)
+          .where('user_id', '=', user.id)
+          .select(['id', 'account_id', 'message_id'])
+          .executeTakeFirst();
+        if (!email) {
+          return { status: 404, body: JSON.stringify({ data: null, error: { code: 'NOT_FOUND', message: 'Email not found' } }) };
+        }
 
-      // Mirror to provider (fire-and-forget)
-      void (async () => {
-        try {
-          const account = await db
-            .selectFrom('email_accounts')
-            .where('id', '=', email.account_id)
-            .selectAll()
-            .executeTakeFirst();
-          if (!account) return;
-          await getProvider(account).updateEmail(email.message_id, body);
-        } catch (err) { console.error({ err }, 'mail: provider mirror failed'); }
-      })();
+        await db
+          .updateTable('emails')
+          .set({ folder: 'trash' })
+          .where('id', '=', email.id)
+          .execute();
 
-      res.json({ data: updated, error: null });
-    } catch (err) { next(err); }
+        void (async () => {
+          try {
+            const account = await db
+              .selectFrom('email_accounts')
+              .where('id', '=', email.account_id)
+              .selectAll()
+              .executeTakeFirst();
+            if (!account) return;
+            await getProvider(account).updateEmail(email.message_id, { folder: 'trash' });
+          } catch (err) { console.error({ err }, 'mail: provider trash failed'); }
+        })();
+
+        return { status: 200, body: JSON.stringify({ data: { trashed: true }, error: null }) };
+      } catch (err) {
+        console.error(err);
+        return { status: 500, body: JSON.stringify({ data: null, error: { message: 'Internal Server Error' } }) };
+      }
+    }
+
+    return { status: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   });
 
-  // POST /api/mail/send
-  router.post('/send', async (req, res, next) => {
+  // POST /emails/send
+  (vencore.http as any).onEndpoint('/emails/send', async (req: any) => {
     try {
-      const { user } = req as unknown as AuthenticatedRequest;
-      const body = sendSchema.parse(req.body);
+      const user = await vencore.user.get();
+      const db = getGlobalDb();
+      const body = sendSchema.parse(req.body ? JSON.parse(req.body) : {});
 
       const account = await db
         .selectFrom('email_accounts')
@@ -172,8 +229,7 @@ export function createMailEmailsRouter(db: Kysely<Database>): ExpressRouter {
         .selectAll()
         .executeTakeFirst();
       if (!account) {
-        res.status(404).json({ data: null, error: { code: 'NOT_FOUND', message: 'Account not found' } });
-        return;
+        return { status: 404, body: JSON.stringify({ data: null, error: { code: 'NOT_FOUND', message: 'Account not found' } }) };
       }
 
       const { message_id } = await getProvider(account).sendEmail({
@@ -216,7 +272,7 @@ export function createMailEmailsRouter(db: Kysely<Database>): ExpressRouter {
           type: 'email',
           body: body.subject,
           contact_id: body.contact_id,
-          deal_id: body.deal_id,
+          record_id: body.deal_id,
           meta: {
             email_id: sentEmail.id,
             direction: 'outbound',
@@ -226,46 +282,10 @@ export function createMailEmailsRouter(db: Kysely<Database>): ExpressRouter {
         mailNotifier.broadcast(user.id, { type: 'new_email', email: sentEmail });
       }
 
-      res.status(201).json({ data: { message_id }, error: null });
-    } catch (err) { console.error('[mail:send]', err); next(err); }
+      return { status: 201, body: JSON.stringify({ data: { message_id }, error: null }) };
+    } catch (err) {
+      console.error('[mail:send]', err);
+      return { status: 500, body: JSON.stringify({ data: null, error: { message: 'Internal Server Error' } }) };
+    }
   });
-
-  // DELETE /api/mail/emails/:id — move to trash
-  router.delete('/:id', async (req, res, next) => {
-    try {
-      const { user } = req as unknown as AuthenticatedRequest;
-      const email = await db
-        .selectFrom('emails')
-        .where('id', '=', req.params['id']!)
-        .where('user_id', '=', user.id)
-        .select(['id', 'account_id', 'message_id'])
-        .executeTakeFirst();
-      if (!email) {
-        res.status(404).json({ data: null, error: { code: 'NOT_FOUND', message: 'Email not found' } });
-        return;
-      }
-
-      await db
-        .updateTable('emails')
-        .set({ folder: 'trash' })
-        .where('id', '=', email.id)
-        .execute();
-
-      void (async () => {
-        try {
-          const account = await db
-            .selectFrom('email_accounts')
-            .where('id', '=', email.account_id)
-            .selectAll()
-            .executeTakeFirst();
-          if (!account) return;
-          await getProvider(account).updateEmail(email.message_id, { folder: 'trash' });
-        } catch (err) { console.error({ err }, 'mail: provider trash failed'); }
-      })();
-
-      res.json({ data: { trashed: true }, error: null });
-    } catch (err) { next(err); }
-  });
-
-  return router;
 }

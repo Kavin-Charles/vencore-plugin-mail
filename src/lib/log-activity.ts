@@ -1,5 +1,5 @@
 import type { Kysely } from 'kysely';
-import type { Database } from '@vencore/db';
+import type { Database } from '../types';
 
 interface ActivityPayload {
   workspace_id: string;
@@ -7,7 +7,7 @@ interface ActivityPayload {
   type: 'email' | 'call' | 'note' | 'meeting' | 'deal_change' | 'infra_alert';
   body?: string;
   contact_id?: string;
-  deal_id?: string;
+  record_id?: string;
   meta?: Record<string, unknown>;
 }
 
@@ -16,19 +16,16 @@ export async function logActivity(
   payload: ActivityPayload,
 ): Promise<void> {
   try {
-    await db
-      .insertInto('activities')
-      .values({
-        workspace_id: payload.workspace_id,
-        user_id: payload.user_id,
-        type: payload.type,
-        body: payload.body ?? null,
-        contact_id: payload.contact_id ?? null,
-        deal_id: payload.deal_id ?? null,
-        meta: payload.meta ?? null,
-      })
-      .returningAll()
-      .executeTakeFirstOrThrow();
+    await db.insertInto('activities').values({
+      workspace_id: payload.workspace_id,
+      user_id: payload.user_id,
+      type: payload.type,
+      body: payload.body ?? null,
+      contact_id: payload.contact_id ?? null,
+      record_id: payload.record_id ?? null,
+      meta: payload.meta ?? null,
+      created_at: new Date().toISOString() as any,
+    }).execute();
   } catch (err) {
     console.error('logActivity: failed to insert activity', err);
   }

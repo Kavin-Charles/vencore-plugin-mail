@@ -5,3 +5,4 @@ export interface AuthenticatedRequest extends Request {
   workspace: { id: string };
   user: { id: string; workspace_id: string; role: 'admin' | 'member' };
 }
+export type { Database, EmailAccount, Email, WorkspaceImapConfig } from './schema';

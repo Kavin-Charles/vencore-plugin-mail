@@ -1,5 +1,5 @@
 import type { Kysely } from 'kysely';
-import type { Database, EmailAccount } from '@vencore/db';
+import type { Database, EmailAccount } from '../types';
 import { decryptSecret, encryptSecret } from '../lib/mail-crypto';
 import { createGmailProvider } from '../lib/gmail-provider';
 import { createImapProvider } from '../lib/imap-provider';
@@ -127,7 +127,7 @@ async function storeEmails(
         type: 'email',
         body: email.subject ?? '(no subject)',
         contact_id: contactId ?? undefined,
-        deal_id: dealId ?? undefined,
+        record_id: dealId ?? undefined,
         meta: {
           email_id: inserted.id,
           direction: 'inbound',

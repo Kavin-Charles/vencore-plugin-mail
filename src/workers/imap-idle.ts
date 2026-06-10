@@ -4,7 +4,7 @@
 // Falls back gracefully if IDLE is not supported by the server.
 import { ImapFlow } from 'imapflow';
 import type { Kysely } from 'kysely';
-import type { Database } from '@vencore/db';
+import type { Database } from '../types';
 import { decryptSecret } from '../lib/mail-crypto';
 import { runIncrementalSync } from './mail-sync';
 // logger provided by host
